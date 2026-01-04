@@ -1,0 +1,4 @@
+HF_TOKEN=
+ASR_MODEL_PATH=/models
+ASR_MODEL_NAME=large-v3
+MODELS_PATH=/home/user/models

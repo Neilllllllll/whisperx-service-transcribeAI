@@ -1,0 +1,18 @@
+services:
+  whisperx-api:
+    build: .
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ${MODELS_PATH}:/models
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - ASR_MODEL_PATH=${ASR_MODEL_PATH}
+      - ASR_MODEL_NAME=${ASR_MODEL_NAME}
