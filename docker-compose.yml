@@ -2,7 +2,7 @@ services:
   whisperx-api:
     build: .
     ports:
-      - "8000:8000"
+      - "5001:5001"
     deploy:
       resources:
         reservations:
@@ -16,3 +16,7 @@ services:
       - HF_TOKEN=${HF_TOKEN}
       - ASR_MODEL_PATH=${ASR_MODEL_PATH}
       - ASR_MODEL_NAME=${ASR_MODEL_NAME}
+      - TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE}
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE}
+      - PYTHONHASHSEED=${PYTHONHASHSEED}
+      - HF_HOME=${HF_HOME}

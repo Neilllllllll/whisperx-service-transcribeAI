@@ -1,3 +1,4 @@
+import config
 import os
 import torch
 import functools
@@ -8,8 +9,6 @@ import shutil
 import uuid
 
 # --- PATCHES OBLIGATOIRES pour éviter les warnings ---
-torch.backends.cuda.matmul.allow_tf32 = False
-torch.backends.cudnn.allow_tf32 = False
 original_load = torch.load
 def patched_load(*args, **kwargs):
     kwargs["weights_only"] = False
@@ -18,26 +17,28 @@ torch.load = patched_load
 
 app = FastAPI(title="WhisperX Diarization API")
 
-# --- CONFIGURATION ---
-HF_TOKEN = os.getenv("HF_TOKEN")
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-COMPUTE_TYPE = "float16"
-BATCH_SIZE = 16
-MODEL_DIR = os.getenv("ASR_MODEL_PATH", "/models")
-MODEL_NAME = os.getenv("ASR_MODEL_NAME", "base")
-
-# --- CHARGEMENT DES MODÈLES AU DÉMARRAGE ---
-# On utilise un dictionnaire global pour stocker les modèles
-models = {}
-
 @app.on_event("startup")
 async def load_models():
-    print("Chargement des modèles WhisperX...")
-    models["asr"] = whisperx.load_model(MODEL_NAME, DEVICE, compute_type=COMPUTE_TYPE, download_root=MODEL_DIR)
-    models["diarize"] = DiarizationPipeline(use_auth_token=HF_TOKEN, device=DEVICE)
-    # On chargera le modèle d'alignement dynamiquement selon la langue détectée
-    models["align"] = {} 
-    print("Modèles prêts !")
+    print("⏳ Chargement des modèles pour la diarization !")
+    app.state.models = {}
+    print(f"⏳ Chargement du modèle {config.MODEL_NAME}...")
+    app.state.models["asr"] = whisperx.load_model(config.MODEL_NAME, config.DEVICE, compute_type=config.COMPUTE_TYPE, download_root=config.MODEL_DIR)
+    print(f"✅ Modèle {config.MODEL_NAME} prêt sur {config.DEVICE}")
+
+    print(f"⏳ Chargement du modèle pyannote pour la diarization ")
+    app.state.models["diarize"] = DiarizationPipeline(use_auth_token=False, device=config.DEVICE)
+    print(f"✅ Modèle pyannote prêt sur {config.DEVICE}")
+
+    print(f"⏳ Chargement du modèle pour l'alignement ")
+    model_a, metadata = whisperx.load_align_model(
+        language_code="fr", 
+        device=config.DEVICE
+    )
+    app.state.models["align"] = {"fr": (model_a, metadata)}
+    print(f"✅ Modèle d'alignement prêt sur {config.DEVICE}")
+
+    print("✅ Les modèles pour la diarization ont étés chargées avec succès !")
+
     app.state.is_processing = False
 
 @app.post("/diarize")
@@ -46,7 +47,7 @@ async def do_diarization(audioFile: UploadFile = File(...)):
         raise HTTPException(409, "Service occupé")
     
     app.state.is_processing = True
-    
+
     original_extension = os.path.splitext(audioFile.filename)[1]
     if not original_extension:
         original_extension = ".tmp" # repli par défaut
@@ -60,29 +61,20 @@ async def do_diarization(audioFile: UploadFile = File(...)):
 
         # 1. Transcription (ASR)
         audio = whisperx.load_audio(temp_filename)
-        result = models["asr"].transcribe(audio, batch_size=BATCH_SIZE)
+        result = app.state.models["asr"].transcribe(audio, batch_size=config.BATCH_SIZE)
         language = result["language"]
 
         # 2. Alignement avec sécurité
         try:
-            if language not in models["align"]:
-                # On tente de charger, sinon on replie sur l'alignement par défaut ou on skip
-                model_a, metadata = whisperx.load_align_model(language_code=language, device=DEVICE)
-                models["align"][language] = (model_a, metadata)
-            
-            model_a, metadata = models["align"][language]
-            result = whisperx.align(result["segments"], model_a, metadata, audio, DEVICE, return_char_alignments=False)
+            model_a, metadata = app.state.models["align"][language]
+            result = whisperx.align(result["segments"], model_a, metadata, audio, config.DEVICE, return_char_alignments=False)
         except Exception as align_error:
             print(f"Warning: Alignment failed for language {language}: {align_error}")
             # On continue sans alignement précis si ça échoue
 
         # 3. Diarization
-        # On s'assure que l'audio est libéré de la mémoire si possible après ça
-        diarize_segments = models["diarize"](audio)
+        diarize_segments = app.state.models["diarize"](audio)
         result = whisperx.assign_word_speakers(diarize_segments, result)
-
-        # 4. Nettoyage VRAM agressif (Optionnel mais recommandé pour RTX 50)
-        # torch.cuda.empty_cache() 
 
         output = [{
             "start": round(seg["start"], 2) if "start" in seg else 0,
