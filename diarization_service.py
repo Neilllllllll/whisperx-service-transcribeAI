@@ -41,17 +41,22 @@ async def load_models():
     app.state.is_processing = False
 
 @app.post("/diarize")
-async def do_diarization(file: UploadFile = File(...)):
+async def do_diarization(audioFile: UploadFile = File(...)):
     if app.state.is_processing:
         raise HTTPException(409, "Service occupé")
     
     app.state.is_processing = True
-    temp_filename = f"temp_{uuid.uuid4()}.mp3"
+    
+    original_extension = os.path.splitext(audioFile.filename)[1]
+    if not original_extension:
+        original_extension = ".tmp" # repli par défaut
+        
+    temp_filename = f"temp_{uuid.uuid4()}{original_extension}"
     
     try:
         # Sauvegarde
         with open(temp_filename, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            shutil.copyfileobj(audioFile.file, buffer)
 
         # 1. Transcription (ASR)
         audio = whisperx.load_audio(temp_filename)
