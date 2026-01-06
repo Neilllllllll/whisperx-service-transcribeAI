@@ -68,7 +68,7 @@ RUN pip install -r requirements.txt
 
 COPY diarization_service.py .
 
-EXPOSE 8000
+EXPOSE 5001
 
 # Lancement du micro-service
-CMD ["python3", "diarization_service.py"]
+CMD ["uvicorn", "run:app", "--host", "0.0.0.0", "--port", "5001", "--workers", "1"]
