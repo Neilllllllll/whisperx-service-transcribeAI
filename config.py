@@ -6,3 +6,4 @@ COMPUTE_TYPE = "float16"
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "16"))
 MODEL_DIR = os.getenv("ASR_MODEL_PATH", "/models")
 MODEL_NAME = os.getenv("ASR_MODEL_NAME", "base")
+HF_TOKEN = os.getenv("HF_TOKEN", "")
