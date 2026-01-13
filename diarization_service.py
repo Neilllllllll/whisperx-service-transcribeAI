@@ -8,6 +8,7 @@ import whisperx
 from whisperx.diarize import DiarizationPipeline
 import shutil
 import uuid
+from typing import Optional
 
 # --- PATCHES OBLIGATOIRES pour éviter les warnings ---
 original_load = torch.load
@@ -57,7 +58,11 @@ async def load_models():
         app.state.is_processing = False
 
 @app.post("/diarize")
-async def do_diarization(audioFile: UploadFile = File(...)):
+async def do_diarization(
+    audioFile: UploadFile = File(...),
+    min_speakers: Optional[int] = None, # Paramètre optionnel
+    max_speakers: Optional[int] = None  # Paramètre optionnel
+):
     if app.state.is_processing:
         raise HTTPException(409, "Service occupé")
     
@@ -88,7 +93,7 @@ async def do_diarization(audioFile: UploadFile = File(...)):
             # On continue sans alignement précis si ça échoue
 
         # 3. Diarization
-        diarize_segments = app.state.models["diarize"](audio)
+        diarize_segments = app.state.models["diarize"](audio, min_speakers=min_speakers, max_speakers=max_speakers)
         result = whisperx.assign_word_speakers(diarize_segments, result)
 
         output = [{
